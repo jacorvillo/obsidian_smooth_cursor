@@ -198,18 +198,17 @@ export default class SmoothCursorPlugin extends Plugin {
       return returnStatement(1);
     }
 
-    // Use smooth fade in/out with sine wave instead of binary blink
+    // Use smooth fade in/out with sine wave that goes from 0 to 1
     const timePassed = Date.now() - this.blinkStartTime - this.settings.blinkDelay * 1000;
     const blinkMs = this.settings.blinkSpeed * 1000;
 
     if (timePassed < 0) { return returnStatement(1); }
 
-    // Create smooth sine wave fade (0.3 to 1.0 range for visibility)
+    // Create smooth sine wave fade (0 to 1.0 range for full transparency)
     const cycle = (timePassed % blinkMs) / blinkMs; // 0 to 1
-    const opacity = 0.3 + 0.7 * (Math.sin(cycle * Math.PI * 2) * 0.5 + 0.5);
+    const opacity = Math.sin(cycle * Math.PI * 2) * 0.5 + 0.5;
     return returnStatement(opacity);
   }
-
   // Smooth typing function that returns whether anything has started or violated a smooth movement on this frame.
   private checkSmoothMovement(currCursorCoords: Coordinates): boolean {
     // If the iconCoords and cursorCoords are the same, then we do not need a smoothMovement
