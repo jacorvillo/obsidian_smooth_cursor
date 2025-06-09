@@ -39,6 +39,8 @@ export default class SmoothCursorPlugin extends Plugin {
   prevIconCoords: Coordinates = { left: 0, top: 0 };
   currIconCoords: Coordinates = { left: 0, top: 0 };
 
+  lastValidCoords: Coordinates = { left: 0, top: 0 };
+
   prevFrameTime: number = Date.now();
   blinkStartTime: number = Date.now();
 
@@ -180,7 +182,6 @@ export default class SmoothCursorPlugin extends Plugin {
     this.prevCursorCoords = this.currCursorCoords; this.prevIconCoords = this.currIconCoords;
     this.prevCursorPos = this.currCursorPos;
   }
-
   // Handles fading of cursor and resets if it moves
   private setCursorBlinkOpacity() {
     const returnStatement = (blinkOpacity: number) => {
@@ -212,12 +213,10 @@ export default class SmoothCursorPlugin extends Plugin {
   // Smooth typing function that returns whether anything has started or violated a smooth movement on this frame.
   private checkSmoothMovement(currCursorCoords: Coordinates): boolean {
     // If the iconCoords and cursorCoords are the same, then we do not need a smoothMovement
-    // Similarly, if there has been a click this frame, we want a sharpMovement
     if (
-      (this.prevIconCoords &&
-        this.prevIconCoords.left === currCursorCoords.left &&
-        this.prevIconCoords.top === currCursorCoords.top) ||
-      (this.mouseDown || this.mouseUpThisFrame)
+      this.prevIconCoords &&
+      this.prevIconCoords.left === currCursorCoords.left &&
+      this.prevIconCoords.top === currCursorCoords.top
     ) {
       return false;
     }
@@ -267,8 +266,7 @@ export default class SmoothCursorPlugin extends Plugin {
     const timeSinceLastFrame = currentTime - this.prevFrameTime;
     this.prevFrameTime = currentTime;
     return timeSinceLastFrame;
-  }
-  private updateCursorInfo(selection: Selection, editor: ExtendedEditor): void {
+  } private updateCursorInfo(selection: Selection, editor: ExtendedEditor): void {
     // Update current cursor pos in terms of character and line
     this.currCursorPos = editor.getCursor();
 
@@ -278,26 +276,41 @@ export default class SmoothCursorPlugin extends Plugin {
     // Handle text selection: use the focus/anchor position for cursor placement
     let cursorRange = document.createRange();
 
-    // For text selections, use the focus position (where cursor would be)
-    if (selection.rangeCount > 0 && !selection.isCollapsed) {
-      // There's a text selection - position cursor at the focus end
-      cursorRange.setStart(selection.focusNode, selection.focusOffset);
-      cursorRange.setEnd(selection.focusNode, selection.focusOffset);
-    } else {
-      // Normal cursor positioning
-      cursorRange.setStart(selection.focusNode, selection.focusOffset);
-      if (selection.focusOffset === 0) {
-        cursorRange.setEnd(selection.focusNode, 1);
-      } else {
+    try {
+      // For text selections, use the focus position (where cursor would be)
+      if (selection.rangeCount > 0 && !selection.isCollapsed) {
+        // There's a text selection - position cursor at the focus end
+        cursorRange.setStart(selection.focusNode, selection.focusOffset);
         cursorRange.setEnd(selection.focusNode, selection.focusOffset);
+      } else {
+        // Normal cursor positioning
+        cursorRange.setStart(selection.focusNode, selection.focusOffset);
+        if (selection.focusOffset === 0) {
+          cursorRange.setEnd(selection.focusNode, 1);
+        } else {
+          cursorRange.setEnd(selection.focusNode, selection.focusOffset);
+        }
       }
+
+      const cursorInfo = cursorRange.getBoundingClientRect();
+
+      // Only update coordinates if they are valid (not at origin)
+      if (cursorInfo.left > 0 || cursorInfo.top > 0 || (cursorInfo.left === 0 && cursorInfo.top === 0 && this.lastValidCoords.left === 0 && this.lastValidCoords.top === 0)) {
+        this.currCursorCoords = { left: cursorInfo.left, top: cursorInfo.top };
+        this.currCursorHeight = cursorInfo.height;
+
+        // Store last valid coordinates to prevent jumping from top-left
+        if (cursorInfo.left > 0 || cursorInfo.top > 0) {
+          this.lastValidCoords = { left: cursorInfo.left, top: cursorInfo.top };
+        }
+      } else {
+        // Use last valid coordinates to prevent jumping from top-left
+        this.currCursorCoords = this.lastValidCoords;
+      }
+    } catch (error) {
+      // If there's an error getting cursor info, use last valid coordinates
+      this.currCursorCoords = this.lastValidCoords;
     }
-
-    const cursorInfo = cursorRange.getBoundingClientRect();
-
-    // Assign coordinates and height values
-    this.currCursorCoords = { left: cursorInfo.left, top: cursorInfo.top };
-    this.currCursorHeight = cursorInfo.height;
   }
 }
 
