@@ -78,9 +78,7 @@ export default class SmoothCursorPlugin extends Plugin {
   }
   private addStyle() {
     const styleId = 'custom-cursor-style';
-    if (document.getElementById(styleId)) return;
-
-    const style = document.createElement('style');
+    if (document.getElementById(styleId)) return; const style = document.createElement('style');
     style.id = styleId;
     style.textContent = `
 			.custom-cursor {
@@ -88,7 +86,7 @@ export default class SmoothCursorPlugin extends Plugin {
 				--cursor-width: 1px;
 
 				/* Assign properties */
-				background: var(--text-normal);
+				background: var(--caret-color, var(--text-normal));
 				opacity: var(--cursor-opacity);
 
 				height: var(--cursor-height);
