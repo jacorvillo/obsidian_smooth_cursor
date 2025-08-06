@@ -5,13 +5,17 @@ interface SmoothCursorSettings {
   blinkDelay: number;
   movementTime: number;
   cursorWidth: number;
+  caretColor: string;
+  useCustomCaretColor: boolean;
 }
 
 const DEFAULT_SETTINGS: SmoothCursorSettings = {
   blinkSpeed: 1.2,
   blinkDelay: 0,
   movementTime: 80,
-  cursorWidth: 1
+  cursorWidth: 1,
+  caretColor: '#ffffff',
+  useCustomCaretColor: false
 };
 
 type Coordinates = { left: number; top: number };
@@ -75,35 +79,104 @@ export default class SmoothCursorPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+    this.addStyle(); // Update styles when settings change
   }
   private addStyle() {
     const styleId = 'custom-cursor-style';
-    if (document.getElementById(styleId)) return; const style = document.createElement('style');
+    // Remove existing style to allow updates
+    const existingStyle = document.getElementById(styleId);
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+
+    const style = document.createElement('style');
     style.id = styleId;
-    style.textContent = `
-			.custom-cursor {
-				/* Assign variables */
-				--cursor-width: 1px;
 
-				/* Assign properties */
-				background: var(--caret-color, var(--text-normal));
-				opacity: var(--cursor-opacity);
+    if (this.settings.useCustomCaretColor) {
+      // Use the custom color directly with high specificity
+      style.textContent = `
+				.custom-cursor {
+					/* Assign variables */
+					--cursor-width: 1px;
 
-				height: var(--cursor-height);
-				max-height: calc(var(--font-ui-large) * 2);
-				width: var(--cursor-width);
-				position: absolute;
-				top: 0px;
-				left: 0px;
+					/* Use custom color */
+					background: ${this.settings.caretColor} !important;
+					opacity: var(--cursor-opacity);
 
-				transform: translate(var(--cursor-x1), var(--cursor-y1));
-				pointer-events: none;
-			}
+					height: var(--cursor-height);
+					max-height: calc(var(--font-ui-large) * 2);
+					width: var(--cursor-width);
+					position: absolute;
+					top: 0px;
+					left: 0px;
 
-			.cm-editor * {
-				caret-color: transparent;
-			}
-		`;
+					transform: translate(var(--cursor-x1), var(--cursor-y1));
+					pointer-events: none;
+				}
+
+				.cm-editor * {
+					caret-color: transparent;
+				}
+			`;
+    } else {
+      // Use CSS variable approach that respects user CSS snippets and themes
+      style.textContent = `
+				/* Base cursor styles */
+				.custom-cursor {
+					/* Assign variables */
+					--cursor-width: 1px;
+
+					/* Basic properties */
+					opacity: var(--cursor-opacity);
+					height: var(--cursor-height);
+					max-height: calc(var(--font-ui-large) * 2);
+					width: var(--cursor-width);
+					position: absolute;
+					top: 0px;
+					left: 0px;
+					transform: translate(var(--cursor-x1), var(--cursor-y1));
+					pointer-events: none;
+
+					/* Default background - lowest priority */
+					background: var(--text-normal);
+				}
+
+				/* Medium priority - use caret color if available */
+				.custom-cursor {
+					background: var(--caret-color, var(--text-normal));
+				}
+
+				/* Higher priority selectors for theme-specific overrides */
+				.theme-dark .custom-cursor,
+				.theme-light .custom-cursor {
+					background: var(--caret-color, var(--text-normal));
+				}
+
+				/* Highest priority - ensure CSS snippet overrides work */
+				body.theme-dark .custom-cursor,
+				body.theme-light .custom-cursor,
+				html.theme-dark .custom-cursor,
+				html.theme-light .custom-cursor {
+					background: var(--caret-color, var(--text-normal));
+				}
+
+				/* Handle any context where CSS variables might be defined */
+				/* This creates a fallback chain that works in any scope */
+				* .custom-cursor {
+					background: var(--caret-color, var(--text-normal));
+				}
+
+				/* Force re-evaluation of CSS variables in all possible contexts */
+				[class] .custom-cursor {
+					background: var(--caret-color, var(--text-normal));
+				}
+
+				.cm-editor * {
+					caret-color: transparent;
+				}
+			`;
+    }
+
     document.head.appendChild(style);
   }
 
@@ -407,9 +480,50 @@ class SmoothCursorSettingTab extends PluginSettingTab {
       .onChange(async (val) => {
         this.plugin.settings.cursorWidth = val;
         await this.plugin.saveSettings();
-      }); containerEl.createEl('h3', { text: 'About' });
-    containerEl.createEl('p', {
-      text: 'This plugin creates a smooth cursor animation similar to VSCode\'s smooth cursor feature. The cursor smoothly moves between positions when typing or navigating, includes smooth fade animations instead of blinking, and works during text selection. The cursor color adapts to your theme.'
-    });
+      });
+
+    // CUSTOM CARET COLOR TOGGLE
+    new Setting(this.containerEl)
+      .setName('Use custom caret color')
+      .setDesc('Enable custom caret color instead of using theme/CSS variable. When disabled, the cursor will use --caret-color CSS variable or fall back to --text-normal.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.useCustomCaretColor ?? DEFAULT_SETTINGS.useCustomCaretColor)
+        .onChange(async (value) => {
+          this.plugin.settings.useCustomCaretColor = value;
+          await this.plugin.saveSettings();
+          this.display(); // Refresh the settings display
+        }));
+
+    // CUSTOM CARET COLOR PICKER (only show if custom color is enabled)
+    if (this.plugin.settings.useCustomCaretColor) {
+      const caretColorSetting = new Setting(this.containerEl)
+        .setName('Caret color')
+        .setDesc('Choose a custom color for the cursor caret.')
+
+      new ResetButtonComponent(caretColorSetting.controlEl)
+        .onClick(async () => {
+          this.plugin.settings.caretColor = DEFAULT_SETTINGS.caretColor;
+          await this.plugin.saveSettings();
+          this.display(); // Refresh to show updated color
+        });
+
+      // Create color input
+      const colorInput = document.createElement('input');
+      colorInput.type = 'color';
+      colorInput.value = this.plugin.settings.caretColor ?? DEFAULT_SETTINGS.caretColor;
+      colorInput.style.width = '50px';
+      colorInput.style.height = '30px';
+      colorInput.style.border = 'none';
+      colorInput.style.borderRadius = '4px';
+      colorInput.style.cursor = 'pointer';
+
+      colorInput.addEventListener('change', async (event) => {
+        const target = event.target as HTMLInputElement;
+        this.plugin.settings.caretColor = target.value;
+        await this.plugin.saveSettings();
+      });
+
+      caretColorSetting.controlEl.appendChild(colorInput);
+    }
   }
 }
