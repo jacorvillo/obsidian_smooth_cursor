@@ -3,6 +3,7 @@ import { Plugin, PluginSettingTab, App, Setting, MarkdownView, Editor, ButtonCom
 interface SmoothCursorSettings {
   blinkSpeed: number;
   blinkDelay: number;
+  idleFadeCycles: number;
   movementTime: number;
   cursorWidth: number;
   caretColor: string;
@@ -12,6 +13,7 @@ interface SmoothCursorSettings {
 const DEFAULT_SETTINGS: SmoothCursorSettings = {
   blinkSpeed: 1.2,
   blinkDelay: 0,
+  idleFadeCycles: 10,
   movementTime: 80,
   cursorWidth: 1,
   caretColor: '#ffffff',
@@ -272,8 +274,9 @@ export default class SmoothCursorPlugin extends Plugin {
     // Use smooth fade in/out with sine wave that goes from 0 to 1
     const timePassed = Date.now() - this.blinkStartTime - this.settings.blinkDelay * 1000;
     const blinkMs = this.settings.blinkSpeed * 1000;
+    const isPastFadeCycles = this.settings.idleFadeCycles != 0 && timePassed > blinkMs * this.settings.idleFadeCycles;
 
-    if (timePassed < 0) { return returnStatement(1); }
+    if (timePassed < 0 || isPastFadeCycles) { return returnStatement(1); }
 
     // Create smooth sine wave fade (0 to 1.0 range for full transparency)
     const cycle = (timePassed % blinkMs) / blinkMs; // 0 to 1
@@ -443,6 +446,23 @@ class SmoothCursorSettingTab extends PluginSettingTab {
       .setValue(this.plugin.settings.blinkDelay ?? DEFAULT_SETTINGS.blinkDelay)
       .onChange(async (val) => {
         this.plugin.settings.blinkDelay = val;
+        await this.plugin.saveSettings();
+      });
+      // IDLE FADE CYCLES SLIDER
+    const idleFadeCyclesSetting = new Setting(this.containerEl)
+      .setName('Idle fade cycles')
+      .setDesc('When the cursor is idle, the number of fade cycles before it stops blinking. 0 to disable.')
+    new ResetButtonComponent(idleFadeCyclesSetting.controlEl)
+      .onClick(async () => {
+        idleFadeCyclesSlider.setValue(DEFAULT_SETTINGS.idleFadeCycles);
+        await this.plugin.saveSettings();
+      });
+    const idleFadeCyclesSlider = new SliderComponent(idleFadeCyclesSetting.controlEl)
+      .setLimits(0, 50, 1)
+      .setDynamicTooltip()
+      .setValue(this.plugin.settings.idleFadeCycles ?? DEFAULT_SETTINGS.idleFadeCycles)
+      .onChange(async (val) => {
+        this.plugin.settings.idleFadeCycles = val;
         await this.plugin.saveSettings();
       });
 
